@@ -1,0 +1,34 @@
+{
+  "name": "defx-v1-core",
+  "version": "1.0.0",
+  "description": "DeFX is a fully decentralized Protocol for anonymous and secure fiat-crypto and crypto-fiat trading driven by Community.",
+  "main": "index.js",
+  "scripts": {
+    "test": "hardhat test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/DeFX-protocol/defx-v1-core.git"
+  },
+  "keywords": [
+    "defi",
+    "decentralized",
+    "exchange",
+    "community-driven",
+    "secure",
+    "anonymous",
+    "fiat",
+    "crypto"
+  ],
+  "author": "defx-protocol",
+  "license": "BUSL-1.1",
+  "bugs": {
+    "url": "https://github.com/DeFX-protocol/defx-v1-core/issues"
+  },
+  "homepage": "https://github.com/DeFX-protocol/defx-v1-core#readme",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^1.0.2",
+    "@openzeppelin/contracts": "^4.7.0",
+    "hardhat": "^2.10.0"
+  }
+}
