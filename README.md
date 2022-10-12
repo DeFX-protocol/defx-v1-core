@@ -1,13 +1,9 @@
-# Sample Hardhat Project
+# DeFX Smart contracts
 
-This project demonstrates a basic Hardhat use case. It comes with a sample contract, a test for that contract, and a script that deploys that contract.
+DeFX - Decentralised Fiat eXchange - blockchain protocol that fills the gap between crypto and traditional finances. DeFX provides a decentralized p2p marketplace where you can buy\sell your crypto for fiat securely and anonymously.
 
-Try running some of the following tasks:
 
-```shell
-npx hardhat help
-npx hardhat test
-GAS_REPORT=true npx hardhat test
-npx hardhat node
-npx hardhat run scripts/deploy.ts
-```
+Check out info about DeFX here:
+- [Docs](https://docs.defx.finance)
+- [Main Page](https://defx.finance)
+- [Testnet Dapp](https://testnet.defx.finance)
