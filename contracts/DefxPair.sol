@@ -50,9 +50,6 @@ contract DefxPair is IDefxPair {
         string[] memory _paymentMethods,
         string memory _desc
     ) external hasEncKey {
-        // forbids creating offer with existing active deals
-        require((_isBuy ? dealLinks.sellers[msg.sender] : dealLinks.buyers[msg.sender]).length == 0, "Defx: ACTIVE_DEAL");
-
         DefxHelpers.createOffer(
             offers[msg.sender][_isBuy],
             CreateOfferParams({
@@ -66,7 +63,8 @@ contract DefxPair is IDefxPair {
                 _ratio: _ratio,
                 _paymentMethods: _paymentMethods,
                 _desc: _desc
-            })
+            }),
+            dealLinks
         );
     }
 
@@ -78,9 +76,6 @@ contract DefxPair is IDefxPair {
         string memory messageData
     ) external hasEncKey {
         (Offer storage offer, Deal storage deal) = _getOfferDeal(owner, isBuy);
-        require(owner != msg.sender, "Defx: SELF_MATCH");
-        require(deal.collateral == 0, "Defx: DEAL_EXISTS");
-
         DefxHelpers.matchOffer(
             offer,
             deal,
@@ -91,18 +86,10 @@ contract DefxPair is IDefxPair {
                 owner: owner,
                 isBuy: isBuy,
                 amountCrypto: amountCrypto,
-                paymentMethod: paymentMethod
+                paymentMethod: paymentMethod,
+                messageData: messageData
             })
         );
-
-        bool isCash = bytes(paymentMethod).length == 0;
-        if (isCash) {
-            deal.startAtBlock = block.number;
-        } else if (isBuy) {
-            deal.startAtBlock = block.number;
-            // sending bank details only for non-cash buy offers
-            deal.messages.push(Message({data: messageData, isFromBuyer: !isBuy}));
-        }
     }
 
     function getOffer(address owner, bool isBuy) external view returns (Offer memory) {
@@ -181,5 +168,13 @@ contract DefxPair is IDefxPair {
 
     function renewOffer(bool _isBuy) public {
         DefxHelpers._renewOffer(offers[msg.sender][_isBuy], _isBuy, msg.sender);
+    }
+
+    function openDispute(address buyer, address seller) external {
+        DefxHelpers.openDispute(buyer, seller, deals[buyer][seller]);
+    }
+
+    function closeDispute(address buyer, address seller) external {
+        DefxHelpers.closeDispute(cryptoAddress, factory, buyer, seller, deals[buyer][seller], dealLinks);
     }
 }

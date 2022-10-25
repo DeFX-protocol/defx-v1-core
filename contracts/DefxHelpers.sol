@@ -4,14 +4,21 @@ pragma solidity ^0.8.17;
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./DefxInterfaces.sol";
 
-uint256 constant MATCH_FEE = 25; // 0.25% (25 / 10000)
-uint256 constant CANCEL_PENALTY = 300; // 3% (300 / 10000)
-uint256 constant SELLER_CANCEL_AFTER_BLOCKS = 1200; // seller can cancel deal in 1h after bank details've been sent
-uint256 constant MIN_RATIO = 1500; // 15%
-uint256 constant CASH_SELLER_CANCEL_TIMEOUT = 28800 * 5; // 1 day = 28800
-
+// service vars
 uint256 constant FOUR_DECIMALS = 10000;
 uint256 constant CRYPTO_DECIMALS = 10**18;
+
+// fees
+uint256 constant MATCH_FEE = 25; // 0.25% (25 / 10000)
+uint256 constant CANCEL_PENALTY = 300; // 3% (300 / 10000)
+
+// restrictions
+uint256 constant MIN_RATIO = 1500; // 15%
+
+// timeouts
+uint256 constant SELLER_CANCEL_TIMEOUT = 1200; // seller can cancel deal in 1h after bank details've been sent
+uint256 constant CASH_SELLER_CANCEL_TIMEOUT = 28800 * 5; // 5 days
+uint256 constant DISPUTE_TIMEOUT = 28800 * 2; // 2 days
 
 library DefxHelpers {
     using SafeMath for uint256;
@@ -25,11 +32,17 @@ library DefxHelpers {
         _;
     }
 
-    function createOffer(Offer storage offer, CreateOfferParams memory params) external {
+    function createOffer(
+        Offer storage offer,
+        CreateOfferParams memory params,
+        DealLinks storage dealLinks
+    ) external {
         require(offer.collateral == 0, "Defx: OFFER_EXISTS");
         require(params._paymentMethods.length > 0, "Defx: !PAYMENT_METHODS");
         require(params._price > 0, "Defx: !PRICE");
         require(params._ratio >= MIN_RATIO, "Defx: RATIO_LIMIT");
+        // forbids creating offer with existing active deals
+        require((params._isBuy ? dealLinks.sellers[msg.sender] : dealLinks.buyers[msg.sender]).length == 0, "Defx: ACTIVE_DEAL");
 
         uint256 offerCollateral;
 
@@ -72,6 +85,9 @@ library DefxHelpers {
         DealLinks storage dealLinks,
         MatchParams memory params
     ) external {
+        require(deal.collateral == 0, "Defx: DEAL_EXISTS");
+        require(params.owner != msg.sender, "Defx: SELF_MATCH");
+
         // fixed or limited offer
         uint256 amountCrypto = offer.max > 0 ? params.amountCrypto : offer.available;
         require(amountCrypto <= offer.available, "Defx: INSUFFICIENT_OFFER_AVAILABLE");
@@ -110,6 +126,15 @@ library DefxHelpers {
 
         _addLinks(dealLinks, params.isBuy, params.owner, msg.sender);
         _renewOffer(offer, params.isBuy, params.owner);
+
+        bool isCash = bytes(params.paymentMethod).length == 0;
+        if (isCash) {
+            deal.startAtBlock = block.number;
+        } else if (params.isBuy) {
+            deal.startAtBlock = block.number;
+            // sending bank details only for non-cash buy offers
+            deal.messages.push(Message({data: params.messageData, isFromBuyer: !params.isBuy}));
+        }
     }
 
     function withdraw(
@@ -213,7 +238,7 @@ library DefxHelpers {
         address buyer,
         address seller,
         DealLinks storage dealLinks
-    ) public onlyParticipant(buyer, seller) {
+    ) external onlyParticipant(buyer, seller) {
         _validateDeal(deal);
         bool isCash = bytes(deal.paymentMethod).length == 0;
 
@@ -222,7 +247,7 @@ library DefxHelpers {
             require(msg.sender == buyer || deal.startAtBlock + CASH_SELLER_CANCEL_TIMEOUT <= block.number, "Defx: FORBIDDEN");
         } else if (msg.sender == seller) {
             require(!deal.fiatSent, "Defx: FIAT_SENT");
-            require(deal.startAtBlock == 0 || deal.startAtBlock + SELLER_CANCEL_AFTER_BLOCKS <= block.number, "Defx: DEAL_TIMEOUT");
+            require(deal.startAtBlock == 0 || deal.startAtBlock + SELLER_CANCEL_TIMEOUT <= block.number, "Defx: DEAL_TIMEOUT");
         }
 
         // charging fee; no cancellation fee for cash deals
@@ -281,7 +306,7 @@ library DefxHelpers {
     }
 
     function fiatSent(Deal storage deal) external {
-        require(deal.collateral > 0, "Defx: INVALID_DEAL");
+        _validateDeal(deal);
         require(deal.messages.length > 0, "Defx: NO_BANK_ACC");
         deal.fiatSent = true;
     }
@@ -305,6 +330,32 @@ library DefxHelpers {
         deal.messages.push(Message({data: data, isFromBuyer: msg.sender == buyer}));
     }
 
+    function openDispute(
+        address buyer,
+        address seller,
+        Deal storage deal
+    ) external onlyParticipant(buyer, seller) {
+        require(deal.collateral > 0 && deal.disputeFromBlock == 0, "Defx: INVALID");
+        deal.disputeFromBlock = block.number;
+    }
+
+    function closeDispute(
+        address cryptoAddress,
+        address factory,
+        address buyer,
+        address seller,
+        Deal storage deal,
+        DealLinks storage dealLinks
+    ) external {
+        address disputeContract = IDefxFactory(factory).disputeContract();
+        require(msg.sender == disputeContract, "Defx: ONLY_DISPUTE_CONTRACT");
+        require(deal.disputeFromBlock > 0, "Defx: NO_DISPUTE");
+        require(deal.disputeFromBlock + DISPUTE_TIMEOUT < block.number, "Defx: DISPUTE_FREEZE");
+        TransferHelper.safeTransfer(cryptoAddress, disputeContract, deal.collateral.mul(2).add(deal.amountCrypto));
+        _deleteDeal(deal);
+        _cleanLinks(dealLinks, buyer, seller);
+    }
+
     function submitFeedbackFrom(
         address factory,
         address buyer,
@@ -314,8 +365,9 @@ library DefxHelpers {
         IDefxStat(IDefxFactory(factory).statAddress()).submitFeedbackFrom(msg.sender, buyer, isPositive, desc);
     }
 
-    function _validateDeal(Deal memory deal) internal pure {
-        require(deal.collateral > 0, "Defx: NO_DEAL");
+    function _validateDeal(Deal memory deal) internal view {
+        require(deal.collateral > 0, "Defx: INVALID_DEAL");
+        require(deal.disputeFromBlock == 0 || deal.disputeFromBlock + DISPUTE_TIMEOUT > block.number, "Defx: UNDER_DISPUTE");
     }
 
     function _renewOffer(
@@ -373,6 +425,7 @@ library DefxHelpers {
         deal.amountCrypto = 0;
         deal.startAtBlock = 0;
         deal.fiatSent = false;
+        deal.disputeFromBlock = 0;
         delete deal.messages;
     }
 

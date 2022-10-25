@@ -11,6 +11,8 @@ contract DefxFactory is IDefxFactory {
 
     address public statAddress;
 
+    address public disputeContract;
+
     mapping(address => string) public encKeys;
 
     mapping(address => mapping(string => address)) public getPair;
@@ -39,9 +41,14 @@ contract DefxFactory is IDefxFactory {
         statAddress = address(new DefxStat());
     }
 
-    function setAllowedCoin(address _coinAddress) public {
+    function setAllowedCoin(address _coinAddress) external {
         require(msg.sender == creator, "Defx: FORBIDDEN");
         allowedCoins[_coinAddress] = true;
+    }
+
+    function setDisputeContract(address _disputeContract) external {
+        require(msg.sender == creator, "Defx: FORBIDDEN");
+        disputeContract = _disputeContract;
     }
 
     function setEncKey(string memory _key) external {
@@ -87,5 +94,9 @@ contract DefxFactory is IDefxFactory {
 
     function burnFees() external {
         IDefxToken(DEFX_COIN).burnAll();
+    }
+
+    function getIsPairOrDispute(address _addr) external view returns (bool) {
+        return isPair[_addr] || _addr == disputeContract;
     }
 }

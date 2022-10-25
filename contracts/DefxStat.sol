@@ -11,8 +11,8 @@ contract DefxStat is IDefxStat {
         factory = msg.sender;
     }
 
-    modifier onlyPair() {
-        require(IDefxFactory(factory).isPair(msg.sender), "DefxFactory: !PAIR");
+    modifier onlyDefxContracts() {
+        require(IDefxFactory(factory).getIsPairOrDispute(msg.sender), "DefxFactory: ONLY_DEFX_CONTRACTS");
         _;
     }
 
@@ -24,7 +24,7 @@ contract DefxStat is IDefxStat {
         return userProfile[account];
     }
 
-    function setFeedbackAllowed(address a, address b) external onlyPair {
+    function setFeedbackAllowed(address a, address b) external onlyDefxContracts {
         feedbackAllowed[a][b] = true;
         feedbackAllowed[b][a] = true;
     }
@@ -44,12 +44,21 @@ contract DefxStat is IDefxStat {
         userProfile[account].failedDeals++;
     }
 
-    function incrementCompletedDeal(address a, address b) external onlyPair {
+    function incrementAccountStat(address account, bool isFailed) external onlyDefxContracts {
+        _setFirstDeal(account);
+        if (isFailed) {
+            userProfile[account].failedDeals++;
+        } else {
+            userProfile[account].completedDeals++;
+        }
+    }
+
+    function incrementCompletedDeal(address a, address b) external onlyDefxContracts {
         _incrementCompletedDeal(a);
         _incrementCompletedDeal(b);
     }
 
-    function incrementFailedDeal(address a, address b) external onlyPair {
+    function incrementFailedDeal(address a, address b) external onlyDefxContracts {
         _incrementFailedDeal(a);
         _incrementFailedDeal(b);
     }
@@ -69,7 +78,7 @@ contract DefxStat is IDefxStat {
         bool isPositive,
         string calldata desc
     ) external {
-        require(feedbackAllowed[msg.sender][to], "DefxFactory: NOT_ALLOWED");
+        require(feedbackAllowed[msg.sender][to], "DefxFactory: FORBIDDEN");
         _submitFeedback(msg.sender, to, isPositive, desc);
     }
 
@@ -78,7 +87,7 @@ contract DefxStat is IDefxStat {
         address to,
         bool isPositive,
         string calldata desc
-    ) external onlyPair {
+    ) external onlyDefxContracts {
         _submitFeedback(from, to, isPositive, desc);
     }
 

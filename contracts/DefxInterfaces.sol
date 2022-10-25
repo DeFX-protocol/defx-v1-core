@@ -19,6 +19,7 @@ struct Deal {
     Message[] messages;
     bool fiatSent;
     uint256 startAtBlock;
+    uint256 disputeFromBlock;
 }
 
 struct Offer {
@@ -58,6 +59,7 @@ struct MatchParams {
     bool isBuy;
     uint256 amountCrypto;
     string paymentMethod;
+    string messageData;
 }
 
 struct UserProfile {
@@ -97,19 +99,31 @@ interface IDefxFactory {
 
     function isPair(address pairAddr) external view returns (bool);
 
+    function getIsPairOrDispute(address addr) external view returns (bool);
+
     function statAddress() external view returns (address);
+
+    function disputeContract() external view returns (address);
 
     function setAllowedCoin(address coinAddress) external;
 }
 
 interface IDefxPair {
     function initialize(address, string memory) external;
+
+    function closeDispute(address buyer, address seller) external;
+
+    function cryptoAddress() external view returns (address);
+
+    function getDeal(address buyer, address seller) external view returns (Deal memory);
 }
 
 interface IDefxStat {
     function getUserProfile(address account) external view returns (UserProfile memory);
 
     function setFeedbackAllowed(address a, address b) external;
+
+    function incrementAccountStat(address account, bool isFailed) external;
 
     function incrementCompletedDeal(address a, address b) external;
 
